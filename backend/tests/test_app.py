@@ -4,6 +4,9 @@ import sys
 from flask import Flask
 
 
+# =========================
+# TESTE 1 - CRIAÇÃO DO APP
+# =========================
 def test_app_module_creates_flask_app():
     import app
 
@@ -12,6 +15,9 @@ def test_app_module_creates_flask_app():
     assert "api" in app.app.blueprints
 
 
+# =========================
+# TESTE 2 - DATABASE URI VIA ENV
+# =========================
 def test_app_uses_explicit_database_uri_env(monkeypatch):
     monkeypatch.setenv("SQLALCHEMY_DATABASE_URI", "sqlite:///:memory:")
 
