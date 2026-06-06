@@ -15,7 +15,8 @@ Aplicação web para gerenciamento de tarefas com backend em Flask e frontend es
 │   ├── requirements.txt         # Dependências Python
 │   ├── jenkins_requirements.txt # Dependências instaladas no Jenkins
 │   ├── Dockerfile               # Imagem Docker do backend
-│   └── tests/                   # Testes da API
+│   ├── .dockerignore            # Arquivos ignorados no build do backend
+│   └── tests/                   # Testes da API (pytest)
 │
 ├── frontend/            # Aplicação web estática
 │   ├── index.html       # Página principal
@@ -23,11 +24,15 @@ Aplicação web para gerenciamento de tarefas com backend em Flask e frontend es
 │   ├── app.js           # Lógica da interface
 │   ├── edit.js          # Lógica de edição
 │   ├── styles.css       # Estilos CSS
+│   ├── package.json     # Scripts e configuração do Jest
+│   ├── package-lock.json
+│   ├── tests/           # Testes do frontend (Jest + jsdom)
 │   └── Dockerfile       # Imagem Docker do frontend
 │
 ├── docker-compose.yml   # Orquestração dos serviços
 ├── Dockerfile.jenkins   # Imagem Docker do Jenkins
 ├── Jenkinsfile          # Pipeline CI/CD
+├── .dockerignore        # Arquivos ignorados no build do Jenkins (contexto = raiz)
 └── README.md            # Este arquivo
 ```
 
@@ -176,7 +181,7 @@ volumes:
 | `depends_on` | Backend aguarda `postgres` ficar saudável; frontend aguarda backend iniciar |
 | `healthcheck` | `pg_isready` valida que o Postgres está aceitando conexões antes do backend subir |
 | `privileged: true` | Necessário para que o Jenkins acesse o Docker do host |
-| `volumes` | `postgres_data` persiste o banco; `jenkins_home` persiste o estado do Jenkins; `docker.sock` permite builds no host |
+| `volumes` | `postgres_data` persiste o banco; `jenkins_home` persiste o estado do Jenkins; `jenkins_pip_cache` reaproveita downloads do pip entre builds; `docker.sock` permite builds no host |
 
 ---
 
@@ -249,8 +254,10 @@ Reiniciar o `backend` não afeta os dados — eles vivem no Postgres. Reiniciar 
 ### Dockerfile.jenkins
 
 - **Base**: `jenkins/jenkins:lts`
-- **Instala**: `docker`, `python3`, `pip`, `git`, ferramentas Postgres
+- **Instala**: `docker`, `python3`, `pip`, `python3-venv`, `nodejs`, `npm`, `git`, ferramentas Postgres (`libpq-dev`, `postgresql-client`)
 - **Portas**: `8080` (UI), `50000` (agentes)
+
+> `nodejs`/`npm` são necessários para a stage **Testes Frontend** da pipeline (`npm ci` + Jest).
 
 ---
 
@@ -347,12 +354,31 @@ docker compose exec frontend bash
 
 ### Backend
 
+Os testes usam um SQLite em memória configurado em `tests/conftest.py` (uma base nova por teste).
+
 ```bash
 cd backend
 pytest -q
+
+# Com relatório de cobertura (HTML + XML, como na pipeline)
+pytest --cov=. --cov-report=html --cov-report=xml
 ```
 
-> Não há testes automatizados no frontend no momento.
+Cobertura atual do backend: ~96% (veja `backend/image.png`).
+
+### Frontend
+
+Suíte Jest (ambiente jsdom) cobrindo `app.js` e `edit.js`. Requer **Node.js 18+** e npm.
+
+```bash
+cd frontend
+npm ci
+
+npm test                # roda a suíte
+npm run test:coverage   # roda com relatório de cobertura
+```
+
+> A configuração do Jest fica em `package.json` e impõe um limite mínimo de **90%** de cobertura (statements, branches, functions e lines). Os testes ficam em `frontend/tests/`.
 
 ---
 
@@ -392,13 +418,14 @@ Certifique-se de que o Docker Desktop está rodando e, na raiz do projeto, execu
 docker compose up --build
 ```
 
-Isso sobe três serviços:
+Isso sobe quatro serviços:
 
+- **postgres** → somente interno (`postgres:5432` na rede do Compose)
 - **backend** → http://localhost:5000
 - **frontend** → http://localhost:8080
 - **jenkins** → http://localhost:9090
 
-O Jenkins usa uma imagem customizada (`Dockerfile.jenkins`) baseada em `jenkins/jenkins:lts` com `docker`, `python3`, `pip`, `git` e ferramentas do Postgres pré-instaladas. Também monta o socket do Docker do host (`/var/run/docker.sock`), permitindo construir imagens no daemon do host. O estado persistente fica no volume `jenkins_home`.
+O Jenkins usa uma imagem customizada (`Dockerfile.jenkins`) baseada em `jenkins/jenkins:lts` com `docker`, `python3`, `pip`, `nodejs`, `npm`, `git` e ferramentas do Postgres pré-instaladas. Também monta o socket do Docker do host (`/var/run/docker.sock`), permitindo construir imagens no daemon do host. O estado persistente fica no volume `jenkins_home`.
 
 ### 2. Desbloquear o Jenkins (apenas na primeira vez)
 
@@ -471,7 +498,7 @@ O `send_email.py` usa `smtp.gmail.com:465` com SSL, então precisa dessa app pas
 
 ### 5. Executar
 
-Clique em **Build Now**. As 6 stages rodam em ordem: instalar dependências → testes → cobertura → build do Docker → salvar tarball → enviar e-mail.
+Clique em **Build Now**. As 7 stages rodam em ordem: instalar dependências → testes (backend) → cobertura → testes frontend → build do Docker → salvar tarball → enviar e-mail.
 
 ### 6. Conferir os resultados
 
