@@ -1,172 +1,138 @@
 # Task Manager API
 
-Uma API simples e eficiente para gerenciamento de tarefas, construída com Flask e SQLAlchemy.
+API REST para gerenciamento de tarefas, construída com Flask e SQLAlchemy.
+
+Este é o backend de um projeto maior (frontend estático + PostgreSQL + Jenkins). Para
+orquestração com Docker Compose e a pipeline de CI/CD, veja o [README na raiz](../README.md).
 
 ## 📋 Características
 
-- ✅ Criação, leitura, atualização e exclusão de tarefas
-- ✅ Banco de dados SQLite integrado
-- ✅ API RESTful
-- ✅ Testes automatizados
-- ✅ Estrutura modular e escalável
+- ✅ CRUD de tarefas + atualização de status
+- ✅ PostgreSQL em produção, com **fallback automático para SQLite** em desenvolvimento
+- ✅ API RESTful, com mensagens e rótulos de status em **pt-BR**
+- ✅ CORS habilitado (Flask-CORS)
+- ✅ Testes automatizados (pytest) com cobertura ~96%
 
 ## 🛠️ Pré-requisitos
 
-- Python 3.8 ou superior
-- pip (gerenciador de pacotes Python)
-- Virtual environment (recomendado)
+- Python 3.11 ou superior
+- pip (ambiente virtual recomendado)
 
 ## 📦 Instalação
 
-### 1. Clone ou acesse o repositório
 ```bash
 cd backend
-```
 
-### 2. Crie um ambiente virtual
-```bash
+# Criar e ativar um ambiente virtual (opcional, recomendado)
 python -m venv venv
-```
+# Windows:        venv\Scripts\activate
+# macOS/Linux:    source venv/bin/activate
 
-### 3. Ative o ambiente virtual
-
-**Windows:**
-```bash
-venv\Scripts\activate
-```
-
-**macOS/Linux:**
-```bash
-source venv/bin/activate
-```
-
-### 4. Instale as dependências
-```bash
 pip install -r requirements.txt
 ```
 
 ## 🚀 Como Executar
 
-Com o ambiente virtual ativado, execute:
-
 ```bash
 python app.py
 ```
 
-A API estará disponível em `http://localhost:5000`
+A API ficará disponível em `http://localhost:5000` (modo debug ligado por padrão).
+
+## 🗄️ Banco de Dados
+
+O `app.py` monta a URI do banco nesta ordem de precedência:
+
+1. `SQLALCHEMY_DATABASE_URI` (se definida)
+2. `DATABASE_URL` (se definida)
+3. As variáveis `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` (usadas pelo `docker-compose.yml`)
+4. **Fallback automático para SQLite local** (`sqlite:///tasks.db`)
+
+Rodando direto com `python app.py` e sem nenhuma dessas variáveis, ele usa SQLite — nenhuma
+configuração extra é necessária para desenvolvimento.
 
 ## 📡 Endpoints da API
 
-### GET `/`
-Retorna uma mensagem de boas-vindas da API.
+As rotas são registradas **sem prefixo `/api`** (base = `http://localhost:5000`).
 
-**Resposta:**
-```json
-{
-  "message": "Task Manager API"
-}
-```
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `GET` | `/` | Mensagem de status da API (JSON) |
+| `GET` | `/tasks` | Lista todas as tarefas |
+| `POST` | `/tasks` | Cria uma nova tarefa (`title` obrigatório) |
+| `GET` | `/tasks/<id>` | Retorna uma tarefa específica |
+| `PUT` | `/tasks/<id>` | Atualiza título, descrição e/ou status |
+| `PATCH` | `/tasks/<id>/status` | Atualiza apenas o status |
+| `DELETE` | `/tasks/<id>` | Remove uma tarefa |
+| `GET` | `/statuses` | Lista os status válidos com rótulos (pt-BR) |
+| `GET` | `/ui` | Serve um `index.html` estático via Flask (a UI oficial roda separada na porta 8080) |
 
-## 📁 Estrutura do Projeto
+Status válidos (`VALID_STATUSES` em `routes.py`): `pending`, `in_progress`, `done`.
+`GET /statuses` devolve os rótulos pt-BR correspondentes: **Aguardando**, **Em andamento**, **Concluída**.
+
+## 📚 Modelo de Dados — Task
+
+| Campo       | Tipo    | Descrição                              |
+|-------------|---------|----------------------------------------|
+| id          | Integer | Identificador único (chave primária)   |
+| title       | String  | Título da tarefa (obrigatório)         |
+| description | String  | Descrição da tarefa (opcional)         |
+| status      | String  | Status da tarefa (padrão: `pending`)   |
+
+## 📁 Estrutura
 
 ```
 backend/
-├── app.py                 # Arquivo principal da aplicação Flask
-├── database.py           # Configuração do banco de dados
-├── models.py             # Definição do modelo de dados (Task)
-├── routes.py             # Definição das rotas da API
-├── requirements.txt      # Dependências do projeto
-├── tests/                # Testes automatizados
-└── README.md            # Este arquivo
+├── app.py                   # Flask app factory + configuração do banco
+├── database.py              # Instância compartilhada do SQLAlchemy (db)
+├── models.py                # Modelo Task + to_dict()
+├── routes.py                # Endpoints da API (Blueprint "api")
+├── send_email.py            # Envio de e-mail (usado pela pipeline Jenkins)
+├── requirements.txt         # Dependências da aplicação
+├── jenkins_requirements.txt # Dependências instaladas no Jenkins
+├── Dockerfile               # Imagem Docker do backend
+└── tests/                   # Testes (pytest)
 ```
 
-## 📚 Estrutura da API
+## 🔧 Dependências principais
 
-### Modelo de Dados - Task
-
-| Campo       | Tipo    | Descrição                          |
-|-------------|---------|-----------------------------------|
-| id          | Integer | Identificador único (chave primária) |
-| title       | String  | Título da tarefa (obrigatório)    |
-| description | String  | Descrição da tarefa (opcional)    |
-| status      | String  | Status da tarefa (padrão: "pending") |
-
-## 🔧 Dependências
-
-- **Flask 3.0.2** - Framework web Python
-- **Flask-SQLAlchemy 3.1.1** - ORM para gerenciamento de banco de dados
-- **psycopg2-binary 2.9.9** - Adaptador PostgreSQL (compatibilidade futura)
-
-## ⚙️ Configuração
-
-### Variáveis de Ambiente Principais
-
-No arquivo `app.py`, você pode configurar:
-
-```python
-# Banco de dados
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tasks.db"
-
-# Rastreamento de modificações
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# Host e porta do servidor
-host="0.0.0.0"
-port=5000
-```
+- **Flask 3.0.2** — framework web
+- **Flask-SQLAlchemy 3.1.1** — ORM
+- **Flask-Cors 4.0.0** — CORS habilitado em `app.py`
+- **psycopg2-binary 2.9.9** — adaptador PostgreSQL
+- **python-dotenv** — carrega variáveis de um `.env` local
+- **pytest** / **pytest-cov** — testes e cobertura
 
 ## 🧪 Testes
 
-Para executar os testes da aplicação:
+Os testes usam um SQLite **em memória** configurado em `tests/conftest.py` (uma base nova por teste).
 
 ```bash
-python -m pytest tests/
+cd backend
+
+pytest -q
+
+# Com relatório de cobertura (HTML), como na pipeline
+pytest --cov=. --cov-report=html
 ```
 
-### Cobertura de Testes: 
-![alt text](image.png)
+Cobertura atual: ~96% (veja `image.png`).
 
-## 💡 Desenvolvimento
+## 🐳 Docker
 
-### Modo Debug
-O servidor está configurado para executar em modo debug por padrão (`debug=True`), permitindo:
-- Recarregamento automático ao salvar arquivos
-- Debugger interativo para erros
+O `Dockerfile` já existe nesta pasta (`python:3.11-slim`, expõe `5000`, roda `python app.py`):
 
-### Adicionar Novas Rotas
-
-1. Edite o arquivo `routes.py`
-2. Crie uma nova função de rota
-3. Registre-a com o decorator `@api.route()`
-
-Exemplo:
-```python
-@api.route("/tasks", methods=["GET"])
-def get_tasks():
-    # implementação
-    pass
+```bash
+docker build -t task-manager .
+docker run -p 5000:5000 task-manager
 ```
 
-## 🐳 Docker (Opcional)
+Para subir o backend junto com Postgres, frontend e Jenkins, use `docker compose up --build`
+na raiz do projeto (recomendado) — veja o [README na raiz](../README.md).
 
-Para contenerizar a aplicação, crie um `Dockerfile`:
+## 📝 Notas
 
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python", "app.py"]
-```
-
-## 🖥️ Frontend simples
-
-Foi adicionada uma interface web minimalista que consome as rotas da API.
-
-- Arquivo principal: `static/index.html`
-- Script cliente: `static/app.js`
-
-Acesse a interface em: `http://localhost:5000/ui`
-
-Observação: a interface é servida pelo Flask a partir da pasta `static`. Abra a URL acima após iniciar o servidor com `python app.py`.
+- Sem autenticação — todos os endpoints são abertos.
+- Mensagens de erro e rótulos de status em pt-BR.
+- O frontend é um app estático **separado** em `../frontend` (servido na porta 8080).
+  Veja [`frontend/README.md`](../frontend/README.md).
